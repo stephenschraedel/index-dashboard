@@ -72,10 +72,11 @@ c1.plotly_chart(px.line(rebased, title="Rebased to 100 at window start",
 mm = m.sort_values("Return/Vol", ascending=False)      # highest first
 hb = px.bar(mm, x="Return/Vol", y="Index", orientation="h", color="Index",
             color_discrete_map=COLORS, text=mm["Return/Vol"].map("{:.2f}".format),
+            category_orders={"Index": list(mm["Index"])},
             title="Return/Vol over the selected window (highest on top)")
 hb.update_layout(showlegend=False, yaxis_title=None)
-hb.update_yaxes(categoryorder="array", categoryarray=list(mm["Index"]),
-                autorange="reversed")                   # first category plots at the top
+hb.update_yaxes(autorange="reversed")                  # first category plots at the top
+c2.plotly_chart(hb, width="stretch")
 
 # ---- row 2: return heatmap + volatility bump chart
 st.subheader("Year by year")
