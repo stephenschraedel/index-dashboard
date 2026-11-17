@@ -75,7 +75,6 @@ hb = px.bar(mm, x="Return/Vol", y="Index", orientation="h", color="Index",
             category_orders={"Index": list(mm["Index"])},
             title="Return/Vol over the selected window (highest on top)")
 hb.update_layout(showlegend=False, yaxis_title=None)
-hb.update_yaxes(autorange="reversed")                  # first category plots at the top
 c2.plotly_chart(hb, width="stretch")
 
 # ---- row 2: return heatmap + volatility bump chart
