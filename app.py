@@ -115,25 +115,37 @@ sc.update_xaxes(tickformat=".0%")
 sc.update_yaxes(tickformat=".0%")
 c5.plotly_chart(sc, width="stretch")
 
-contrib = yt[["Year", "Index", "Return"]].copy()
-contrib["Log return"] = np.log1p(contrib["Return"])
-total_log = contrib.groupby("Index")["Log return"].transform("sum")
-contrib["Share of total"] = contrib["Log return"] / total_log
+from plotly.subplots import make_subplots   # can also go at the top of the file
 
-fig = px.bar(contrib, x="Year", y="Share of total", color="Index",
-             facet_col="Index", facet_col_wrap=2,
-             color_discrete_map=COLORS,
-             category_orders={"Year": years, "Index": [NAMES[x] for x in sel]},
-             hover_data={"Return": ":.1%", "Share of total": ":.0%", "Index": False},
-             title="Share of each index's total return, by year")
-fig.update_layout(showlegend=False, height=460)
-fig.update_xaxes(type="category", tickangle=-60, title=None)
-fig.update_yaxes(tickformat=".0%", title=None)
-fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
-c6.plotly_chart(fig, width="stretch")
-if (total_log.abs() < 0.02).any():
-    c6.caption("Note: an index's total return in this window is near zero, "
-               "so its shares are unstable. Widen the window.")
+names = [NAMES[x] for x in sel]
+ncols = 2                                    # use 4 for a full-width row (move this block out of c6)
+nrows = -(-len(names) // ncols)
+wf = make_subplots(rows=nrows, cols=ncols, subplot_titles=names,
+                   vertical_spacing=0.2, horizontal_spacing=0.08)
+
+for i, nm in enumerate(names):
+    g = yt[yt["Index"] == nm]
+    value = 100 * (1 + g["Return"]).cumprod()          # growth of 100 at each year-end
+    gain = value - value.shift(1).fillna(100)          # points added that year
+    total = value.iloc[-1] - 100
+    wf.add_trace(go.Waterfall(
+        x=list(g["Year"]) + ["Total"],
+        y=list(gain) + [0],
+        measure=["relative"] * len(g) + ["total"],
+        text=[f"{v:+.0f}" for v in gain] + [f"{total:+.0f}"],
+        textposition="outside",
+        hovertext=[f"{r:.1%} return" for r in g["Return"]] + [f"{total:+.0f} points total"],
+        hoverinfo="x+text",
+        increasing=dict(marker=dict(color="#1a9850")),
+        decreasing=dict(marker=dict(color="#d73027")),
+        totals=dict(marker=dict(color="#555555")),
+        connector=dict(line=dict(width=1)),
+    ), row=i // ncols + 1, col=i % ncols + 1)
+
+wf.update_layout(title="Which years built each index's total return? (points gained on 100 invested)",
+                 showlegend=False, height=300 * nrows + 80)
+wf.update_xaxes(type="category", tickangle=-60)
+c6.plotly_chart(wf, width="stretch")
 
 # ---- tables
 st.subheader("Year-by-year winners")
