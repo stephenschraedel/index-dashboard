@@ -2,6 +2,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+import numpy as np
 
 from data_utils import NAMES, clean, load_raw, window_metrics, winners, yearly_metrics
 
@@ -114,10 +115,25 @@ sc.update_xaxes(tickformat=".0%")
 sc.update_yaxes(tickformat=".0%")
 c5.plotly_chart(sc, width="stretch")
 
-best = (yt.sort_values("Return", ascending=False).groupby("Index").head(3)
-          .sort_values(["Index", "Return"], ascending=[True, False])[["Index", "Year", "Return"]])
-c6.subheader("Top 3 years by return, per index")
-c6.dataframe(best.style.format({"Return": "{:.1%}"}), hide_index=True)
+contrib = yt[["Year", "Index", "Return"]].copy()
+contrib["Log return"] = np.log1p(contrib["Return"])
+total_log = contrib.groupby("Index")["Log return"].transform("sum")
+contrib["Share of total"] = contrib["Log return"] / total_log
+
+fig = px.bar(contrib, x="Year", y="Share of total", color="Index",
+             facet_col="Index", facet_col_wrap=2,
+             color_discrete_map=COLORS,
+             category_orders={"Year": years, "Index": [NAMES[x] for x in sel]},
+             hover_data={"Return": ":.1%", "Share of total": ":.0%", "Index": False},
+             title="Share of each index's total return, by year")
+fig.update_layout(showlegend=False, height=460)
+fig.update_xaxes(type="category", tickangle=-60, title=None)
+fig.update_yaxes(tickformat=".0%", title=None)
+fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
+c6.plotly_chart(fig, width="stretch")
+if (total_log.abs() < 0.02).any():
+    c6.caption("Note: an index's total return in this window is near zero, "
+               "so its shares are unstable. Widen the window.")
 
 # ---- tables
 st.subheader("Year-by-year winners")
