@@ -102,11 +102,13 @@ def yearly_metrics(w, cols):
         for y, ry in r.groupby(r.index.year):
             rows.append({"Year": y, "Index": NAMES[c], "Days": len(ry),
                          "Return": (1 + ry).prod() - 1,
+                         "Volatility": ry.std() * np.sqrt(TD),
                          "Return/Vol": ret_vol_ratio(ry)})
     yt = pd.DataFrame(rows)
     yt["Partial"] = yt["Days"] < PARTIAL_DAYS
     yt["Year"] = yt["Year"].astype(str) + np.where(yt["Partial"], "*", "")
     yt["Ratio rank"] = yt.groupby("Year")["Return/Vol"].rank(ascending=False, method="min")
+    yt["Vol rank"] = yt.groupby("Year")["Volatility"].rank(ascending=False, method="min")  # 1 = most volatile
     return yt
 
 
@@ -114,10 +116,15 @@ def winners(yt):
     out = []
     for y, g in yt.groupby("Year", sort=True):
         s = g.sort_values("Return/Vol", ascending=False)
+        top, best_ret = s.iloc[0], g.loc[g["Return"].idxmax()]
         out.append({"Year": y,
-                    "Best Return/Vol": s.iloc[0]["Index"],
-                    "Margin over 2nd": s.iloc[0]["Return/Vol"] - s.iloc[1]["Return/Vol"],
-                    "Best return": g.loc[g["Return"].idxmax(), "Index"]})
+                    "Best Return/Vol": top["Index"],
+                    "Return": top["Return"],
+                    "Volatility": top["Volatility"],
+                    "Return/Vol": top["Return/Vol"],
+                    "Margin over 2nd": top["Return/Vol"] - s.iloc[1]["Return/Vol"],
+                    "Best return": best_ret["Index"],
+                    "Best return value": best_ret["Return"]})
     t = pd.DataFrame(out)
     t["Same winner?"] = t["Best Return/Vol"] == t["Best return"]
     return t
