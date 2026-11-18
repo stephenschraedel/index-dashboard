@@ -14,6 +14,8 @@ COLORS = {name: PALETTE[i] for i, name in enumerate(NAMES.values())}   # same co
 # Bar order toggle: if the highest Return/Vol bar is at the BOTTOM, change this to True.
 REVERSE_BARS = False
 
+WF_LABEL_SIZE = 16   # font size of the numbers above the waterfall bars
+
 
 @st.cache_data(ttl=24 * 3600, show_spinner="Loading index data...")
 def get_data():
@@ -186,25 +188,44 @@ wf = make_subplots(rows=nrows, cols=ncols, subplot_titles=names,
                    vertical_spacing=0.2, horizontal_spacing=0.08)
 
 for i, nm in enumerate(names):
+    r_, c_ = i // ncols + 1, i % ncols + 1
     g = yt[yt["Index"] == nm]
     value = 100 * (1 + g["Return"]).cumprod()          # growth of $100 at each year-end
-    gain = value - value.shift(1).fillna(100)          # dollars added that year
+    prev = value.shift(1).fillna(100)
+    gain = value - prev                                # dollars added that year
     total = value.iloc[-1] - 100
+
+    xs = list(g["Year"]) + ["Total"]
+
+    # bars only (no built-in text; labels are drawn separately below)
     wf.add_trace(go.Waterfall(
-        x=list(g["Year"]) + ["Total"],
+        x=xs,
         y=list(gain) + [0],
         measure=["relative"] * len(g) + ["total"],
-        text=[signed(v) for v in gain] + [signed(total)],
-        textposition="outside",
-        textfont=dict(size=15),
-        outsidetextfont=dict(size=15),
         hovertext=[f"{r:.1%} return" for r in g["Return"]] + [f"{signed(total)} total gain"],
         hoverinfo="x+text",
         increasing=dict(marker=dict(color="#1a9850")),
         decreasing=dict(marker=dict(color="#d73027")),
         totals=dict(marker=dict(color="#555555")),
         connector=dict(line=dict(width=1)),
-    ), row=i // ncols + 1, col=i % ncols + 1)
+    ), row=r_, col=c_)
+
+    # labels: a text-only layer placed at the top of each bar, all the same font size
+    tops = list(pd.concat([prev - 100, value - 100], axis=1).max(axis=1)) + [max(total, 0)]
+    labels = [signed(v) for v in gain] + [signed(total)]
+    wf.add_trace(go.Scatter(
+        x=xs, y=tops, mode="text",
+        text=[f"<b>{t}</b>" for t in labels],
+        textposition="top center",
+        textfont=dict(size=WF_LABEL_SIZE),
+        hoverinfo="skip", showlegend=False,
+    ), row=r_, col=c_)
+
+    # headroom so labels aren't clipped
+    lo = min(0, float((value - 100).min()), float(total))
+    hi = max(max(tops), 0)
+    span = (hi - lo) or 1
+    wf.update_yaxes(range=[lo - 0.08 * span, hi + 0.22 * span], row=r_, col=c_)
 
 wf.update_layout(title="Hypothetical gain per year on $100 invested at window start",
                  showlegend=False, height=300 * nrows + 80)
