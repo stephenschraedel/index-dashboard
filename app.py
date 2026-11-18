@@ -2,7 +2,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
-import numpy as np
+from plotly.subplots import make_subplots
 
 from data_utils import NAMES, clean, load_raw, window_metrics, winners, yearly_metrics
 
@@ -10,6 +10,9 @@ st.set_page_config(layout="wide", page_title="Which index won?")
 
 PALETTE = px.colors.qualitative.Plotly
 COLORS = {name: PALETTE[i] for i, name in enumerate(NAMES.values())}   # same color per index everywhere
+
+# Bar order toggle: if the highest Return/Vol bar is at the BOTTOM, change this to True.
+REVERSE_BARS = False
 
 
 @st.cache_data(ttl=24 * 3600, show_spinner="Loading index data...")
@@ -25,6 +28,10 @@ def card(col, label, name, value):
         <div style="font-size:1.7rem;font-weight:700;">{name}</div>
         <div style="font-size:2.4rem;font-weight:700;line-height:1.1;">{value}</div>
         </div>""", unsafe_allow_html=True)
+
+
+def money(v):
+    return f"{'+' if v >= 0 else '-'}${abs(v):,.0f}"
 
 
 try:
@@ -67,10 +74,10 @@ def go_weakest(label):
     if len(df) <= n:
         return
     r = df[c].pct_change(n)                  # trailing n-day total return
-    end = r.idxmin()
-    start = df.index[df.index.get_loc(end) - n]
-    set_window(start, end, f"Weakest {label} window for {NAMES[c]}: "
-                           f"{start.date()} to {end.date()} ({r.min():.1%})")
+    end_ = r.idxmin()
+    start_ = df.index[df.index.get_loc(end_) - n]
+    set_window(start_, end_, f"Weakest {label} window for {NAMES[c]}: "
+                             f"{start_.date()} to {end_.date()} ({r.min():.1%})")
 
 
 # 1. Time window
@@ -115,22 +122,28 @@ card(k2, "Most volatile", b["Index"], f"{b['Ann. volatility']:.1%}")
 card(k3, "Best Return/Vol", c["Index"], f"{c['Return/Vol']:.2f}")
 card(k4, "Deepest drawdown", d["Index"], f"{d['Max drawdown']:.1%}")
 
-# ---- row 1: rebased prices + Return/Vol ranking
+# ---- row 1: price growth + risk-adjusted performance
 c1, c2 = st.columns(2)
 rebased = (w[sel] / w[sel].iloc[0] * 100).rename(columns=NAMES)
-c1.plotly_chart(px.line(rebased, title="Rebased to 100 at window start",
-                        color_discrete_map=COLORS), width="stretch")
+line = px.line(rebased, title="Price Growth Over Time", color_discrete_map=COLORS)
+line.update_layout(legend_title_text=None, xaxis_title=None, yaxis_title="Index level")
+c1.plotly_chart(line, width="stretch")
+c1.caption("Rebased to 100 at window start.")
 
 mm = m.sort_values("Return/Vol", ascending=False)      # highest first
 hb = px.bar(mm, x="Return/Vol", y="Index", orientation="h", color="Index",
             color_discrete_map=COLORS, text=mm["Return/Vol"].map("{:.2f}".format),
             category_orders={"Index": list(mm["Index"])},
-            title="Return/Vol over the selected window (highest on top)")
+            title="Risk-Adjusted Performance (Return/Volatility)")
 hb.update_layout(showlegend=False, yaxis_title=None)
+if REVERSE_BARS:
+    hb.update_yaxes(autorange="reversed")
 c2.plotly_chart(hb, width="stretch")
 
 # ---- row 2: return heatmap + volatility bump chart
 st.subheader("Year by year")
+if (end - start).days < 800:
+    st.caption("Short window: year-by-year views include partial years (*) and are thin.")
 c3, c4 = st.columns(2)
 
 years = list(dict.fromkeys(yt["Year"]))                 # chronological, partial years keep the *
@@ -156,36 +169,34 @@ bump.update_yaxes(autorange="reversed", dtick=1)
 bump.update_xaxes(type="category")
 c4.plotly_chart(bump, width="stretch")
 
-# ---- row 3: yearly return vs. risk + best years
+# ---- row 3: return vs risk scatter + waterfall
 c5, c6 = st.columns(2)
 sc = px.scatter(yt, x="Volatility", y="Return", color="Index", hover_name="Year",
                 color_discrete_map=COLORS,
-                title="Each year: return vs. risk (one dot per index per year)")
+                title="Return vs Risk (one dot per index per year)")
 sc.update_traces(marker=dict(size=11))
 sc.update_xaxes(tickformat=".0%")
 sc.update_yaxes(tickformat=".0%")
 c5.plotly_chart(sc, width="stretch")
 
-from plotly.subplots import make_subplots   # can also go at the top of the file
-
 names = [NAMES[x] for x in sel]
-ncols = 2                                    # use 4 for a full-width row (move this block out of c6)
+ncols = 2
 nrows = -(-len(names) // ncols)
 wf = make_subplots(rows=nrows, cols=ncols, subplot_titles=names,
                    vertical_spacing=0.2, horizontal_spacing=0.08)
 
 for i, nm in enumerate(names):
     g = yt[yt["Index"] == nm]
-    value = 100 * (1 + g["Return"]).cumprod()          # growth of 100 at each year-end
-    gain = value - value.shift(1).fillna(100)          # points added that year
+    value = 100 * (1 + g["Return"]).cumprod()          # growth of $100 at each year-end
+    gain = value - value.shift(1).fillna(100)          # dollars added that year
     total = value.iloc[-1] - 100
     wf.add_trace(go.Waterfall(
         x=list(g["Year"]) + ["Total"],
         y=list(gain) + [0],
         measure=["relative"] * len(g) + ["total"],
-        text=[f"{v:+.0f}" for v in gain] + [f"{total:+.0f}"],
+        text=[money(v) for v in gain] + [money(total)],
         textposition="outside",
-        hovertext=[f"{r:.1%} return" for r in g["Return"]] + [f"{total:+.0f} points total"],
+        hovertext=[f"{r:.1%} return" for r in g["Return"]] + [f"{money(total)} total gain"],
         hoverinfo="x+text",
         increasing=dict(marker=dict(color="#1a9850")),
         decreasing=dict(marker=dict(color="#d73027")),
@@ -193,10 +204,14 @@ for i, nm in enumerate(names):
         connector=dict(line=dict(width=1)),
     ), row=i // ncols + 1, col=i % ncols + 1)
 
-wf.update_layout(title="Which years built each index's total return? (points gained on 100 invested)",
+wf.update_layout(title="Hypothetical gain per year on $100 invested at window start",
                  showlegend=False, height=300 * nrows + 80)
 wf.update_xaxes(type="category", tickangle=-60)
+wf.update_yaxes(tickprefix="$")
 c6.plotly_chart(wf, width="stretch")
+c6.caption("Each bar is the dollar change in a hypothetical $100 invested at the start "
+           "of the selected window. The grey bar is the total gain. Price-only: no dividends, "
+           "taxes, or fees.")
 
 # ---- tables
 st.subheader("Year-by-year winners")
@@ -212,7 +227,7 @@ with st.expander("All years, all indices"):
                  .style.format({"Return": "{:.1%}", "Volatility": "{:.1%}",
                                 "Return/Vol": "{:.2f}"}), hide_index=True)
 
-st.subheader("Window metrics")
+st.subheader("Summary Metrics")
 st.dataframe(m.style.format({"Total return": "{:.1%}", "Ann. return": "{:.1%}",
                              "Ann. volatility": "{:.1%}", "Return/Vol": "{:.2f}",
                              "Max drawdown": "{:.1%}"}), hide_index=True)
