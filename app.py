@@ -14,7 +14,9 @@ COLORS = {name: PALETTE[i] for i, name in enumerate(NAMES.values())}   # same co
 # Bar order toggle: if the highest Return/Vol bar is at the BOTTOM, change this to True.
 REVERSE_BARS = False
 
-WF_LABEL_SIZE = 14   # font size of the numbers above the waterfall bars
+WF_LABEL_SIZE = 14    # font size of the numbers above the waterfall bars
+BASE = 10_000         # hypothetical amount invested at window start
+LABEL_IN_K = True     # True: labels like +2.4k; False: labels like +2,400 (hover always shows full)
 
 
 @st.cache_data(ttl=24 * 3600, show_spinner="Loading index data...")
@@ -33,7 +35,11 @@ def card(col, label, name, value):
 
 
 def signed(v):
-    return f"{v:+,.0f}"        # +40 or -12, no dollar sign
+    return f"{v:+,.0f}"                  # +2,400 or -1,200 (used in hover text)
+
+
+def bar_label(v):
+    return f"{v / 1000:+.1f}k" if LABEL_IN_K else signed(v)
 
 
 try:
@@ -196,10 +202,10 @@ wf = make_subplots(rows=nrows, cols=ncols, subplot_titles=names,
 for i, nm in enumerate(names):
     r_, c_ = i // ncols + 1, i % ncols + 1
     g = yt[yt["Index"] == nm]
-    value = 100 * (1 + g["Return"]).cumprod()          # growth of $100 at each year-end
-    prev = value.shift(1).fillna(100)
+    value = BASE * (1 + g["Return"]).cumprod()         # growth of the hypothetical investment at each year-end
+    prev = value.shift(1).fillna(BASE)
     gain = value - prev                                # dollars added that year
-    total = value.iloc[-1] - 100
+    total = value.iloc[-1] - BASE
 
     xs = list(g["Year"]) + ["Total"]
 
@@ -208,7 +214,8 @@ for i, nm in enumerate(names):
         x=xs,
         y=list(gain) + [0],
         measure=["relative"] * len(g) + ["total"],
-        hovertext=[f"{r:.1%} return" for r in g["Return"]] + [f"{signed(total)} total gain"],
+        hovertext=[f"{signed(v)} ({r:.1%} return)" for v, r in zip(gain, g["Return"])]
+                  + [f"{signed(total)} total gain"],
         hoverinfo="x+text",
         increasing=dict(marker=dict(color="#1a9850")),
         decreasing=dict(marker=dict(color="#d73027")),
@@ -217,8 +224,8 @@ for i, nm in enumerate(names):
     ), row=r_, col=c_)
 
     # labels: a text-only layer placed at the top of each bar, all the same font size
-    tops = list(pd.concat([prev - 100, value - 100], axis=1).max(axis=1)) + [max(total, 0)]
-    labels = [signed(v) for v in gain] + [signed(total)]
+    tops = list(pd.concat([prev - BASE, value - BASE], axis=1).max(axis=1)) + [max(total, 0)]
+    labels = [bar_label(v) for v in gain] + [bar_label(total)]
     wf.add_trace(go.Scatter(
         x=xs, y=tops, mode="text",
         text=[f"<b>{t}</b>" for t in labels],
@@ -228,19 +235,20 @@ for i, nm in enumerate(names):
     ), row=r_, col=c_)
 
     # headroom so labels aren't clipped
-    lo = min(0, float((value - 100).min()), float(total))
+    lo = min(0, float((value - BASE).min()), float(total))
     hi = max(max(tops), 0)
     span = (hi - lo) or 1
     wf.update_yaxes(range=[lo - 0.08 * span, hi + 0.22 * span], row=r_, col=c_)
 
-wf.update_layout(title="Hypothetical gain per year on $100 invested at window start",
+wf.update_layout(title=f"Hypothetical gain per year on ${BASE:,.0f} invested at window start",
                  showlegend=False, height=380 * nrows + 100)
 wf.update_xaxes(type="category", tickangle=-45)
-wf.update_yaxes(tickprefix="$")                        # the only place a $ appears on the bars
+wf.update_yaxes(tickprefix="$", tickformat=",.0f")     # the only place a $ appears on the bars
 st.plotly_chart(wf, width="stretch")
-st.caption("Each bar is the change in the value of a hypothetical $100 invested at the start "
-           "of the selected window. The grey bar is the total gain. Price-only: no dividends, "
-           "taxes, or fees.")
+st.caption(f"Each bar is the change in the value of a hypothetical ${BASE:,.0f} invested at the start "
+           "of the selected window. The grey bar is the total gain. "
+           + ("Labels are in thousands of dollars (k). " if LABEL_IN_K else "")
+           + "Price-only: no dividends, taxes, or fees.")
 
 # ---- tables
 st.subheader("Year-by-year winners")
