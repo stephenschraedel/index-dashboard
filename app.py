@@ -30,8 +30,8 @@ def card(col, label, name, value):
         </div>""", unsafe_allow_html=True)
 
 
-def money(v):
-    return f"{'+' if v >= 0 else '-'}${abs(v):,.0f}"
+def signed(v):
+    return f"{v:+,.0f}"        # +40 or -12, no dollar sign
 
 
 try:
@@ -194,9 +194,11 @@ for i, nm in enumerate(names):
         x=list(g["Year"]) + ["Total"],
         y=list(gain) + [0],
         measure=["relative"] * len(g) + ["total"],
-        text=[money(v) for v in gain] + [money(total)],
+        text=[signed(v) for v in gain] + [signed(total)],
         textposition="outside",
-        hovertext=[f"{r:.1%} return" for r in g["Return"]] + [f"{money(total)} total gain"],
+        textfont=dict(size=15),
+        outsidetextfont=dict(size=15),
+        hovertext=[f"{r:.1%} return" for r in g["Return"]] + [f"{signed(total)} total gain"],
         hoverinfo="x+text",
         increasing=dict(marker=dict(color="#1a9850")),
         decreasing=dict(marker=dict(color="#d73027")),
@@ -207,9 +209,9 @@ for i, nm in enumerate(names):
 wf.update_layout(title="Hypothetical gain per year on $100 invested at window start",
                  showlegend=False, height=300 * nrows + 80)
 wf.update_xaxes(type="category", tickangle=-60)
-wf.update_yaxes(tickprefix="$")
+wf.update_yaxes(tickprefix="$")                        # the only place a $ appears on the bars
 c6.plotly_chart(wf, width="stretch")
-c6.caption("Each bar is the dollar change in a hypothetical $100 invested at the start "
+c6.caption("Each bar is the change in the value of a hypothetical $100 invested at the start "
            "of the selected window. The grey bar is the total gain. Price-only: no dividends, "
            "taxes, or fees.")
 
