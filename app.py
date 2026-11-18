@@ -41,7 +41,54 @@ st.caption(f"Data range: {df.index.min().date()} to {df.index.max().date()} "
 
 # ---- controls
 d0, d1 = df.index.min().date(), df.index.max().date()
-start, end = st.sidebar.slider("Time window", d0, d1, (d0, d1))
+H = {"1Y": 252, "3Y": 756, "5Y": 1260}      # trading-day approximations of 1, 3, 5 years
+
+if "win" not in st.session_state:           # must be set before the slider is created
+    st.session_state["win"] = (d0, d1)
+    st.session_state["win_note"] = ""
+
+
+def set_window(start, end, note=""):
+    st.session_state["win"] = (start.date(), end.date())
+    st.session_state["win_note"] = note
+
+
+def go_last(label):
+    n = H[label]
+    set_window(df.index[max(0, len(df) - 1 - n)], df.index[-1], f"Last {label}")
+
+
+def go_all():
+    set_window(df.index[0], df.index[-1], "")
+
+
+def go_weakest(label):
+    c, n = st.session_state["worst_idx"], H[label]
+    if len(df) <= n:
+        return
+    r = df[c].pct_change(n)                  # trailing n-day total return
+    end = r.idxmin()
+    start = df.index[df.index.get_loc(end) - n]
+    set_window(start, end, f"Weakest {label} window for {NAMES[c]}: "
+                           f"{start.date()} to {end.date()} ({r.min():.1%})")
+
+
+st.sidebar.markdown("**Quick windows**")
+cols = st.sidebar.columns(4)
+for col, lab in zip(cols[:3], H):
+    col.button(f"Last {lab}", on_click=go_last, args=(lab,), key=f"last_{lab}")
+cols[3].button("All", on_click=go_all, key="all")
+
+st.sidebar.markdown("**Jump to an index's weakest window**")
+st.sidebar.selectbox("Index", list(NAMES), format_func=NAMES.get, key="worst_idx")
+cols = st.sidebar.columns(3)
+for col, lab in zip(cols, H):
+    col.button(f"{lab}", on_click=go_weakest, args=(lab,), key=f"weak_{lab}")
+
+start, end = st.sidebar.slider("Time window", min_value=d0, max_value=d1, key="win")
+if st.session_state["win_note"]:
+    st.sidebar.caption(st.session_state["win_note"])
+
 sel = st.sidebar.multiselect("Indices", list(NAMES), default=list(NAMES),
                              format_func=NAMES.get)
 
