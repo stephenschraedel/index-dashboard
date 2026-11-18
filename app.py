@@ -73,22 +73,26 @@ def go_weakest(label):
                            f"{start.date()} to {end.date()} ({r.min():.1%})")
 
 
+# 1. Time window
+start, end = st.sidebar.slider("Time window", min_value=d0, max_value=d1, key="win")
+if st.session_state["win_note"]:
+    st.sidebar.caption(st.session_state["win_note"])
+
+# 2. Quick windows
 st.sidebar.markdown("**Quick windows**")
 cols = st.sidebar.columns(4)
 for col, lab in zip(cols[:3], H):
     col.button(f"Last {lab}", on_click=go_last, args=(lab,), key=f"last_{lab}")
 cols[3].button("All", on_click=go_all, key="all")
 
+# 3. Jump to an index's weakest window
 st.sidebar.markdown("**Jump to an index's weakest window**")
 st.sidebar.selectbox("Index", list(NAMES), format_func=NAMES.get, key="worst_idx")
 cols = st.sidebar.columns(3)
 for col, lab in zip(cols, H):
     col.button(f"{lab}", on_click=go_weakest, args=(lab,), key=f"weak_{lab}")
 
-start, end = st.sidebar.slider("Time window", min_value=d0, max_value=d1, key="win")
-if st.session_state["win_note"]:
-    st.sidebar.caption(st.session_state["win_note"])
-
+# 4. Indices
 sel = st.sidebar.multiselect("Indices", list(NAMES), default=list(NAMES),
                              format_func=NAMES.get)
 
