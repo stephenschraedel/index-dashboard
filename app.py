@@ -14,7 +14,7 @@ COLORS = {name: PALETTE[i] for i, name in enumerate(NAMES.values())}   # same co
 # Bar order toggle: if the highest Return/Vol bar is at the BOTTOM, change this to True.
 REVERSE_BARS = False
 
-WF_LABEL_SIZE = 16   # font size of the numbers above the waterfall bars
+WF_LABEL_SIZE = 14   # font size of the numbers above the waterfall bars
 
 
 @st.cache_data(ttl=24 * 3600, show_spinner="Loading index data...")
@@ -171,7 +171,7 @@ bump.update_yaxes(autorange="reversed", dtick=1)
 bump.update_xaxes(type="category")
 c4.plotly_chart(bump, width="stretch")
 
-# ---- row 3: return vs risk scatter + waterfall
+# ---- row 3: return vs risk scatter + summary metrics
 c5, c6 = st.columns(2)
 sc = px.scatter(yt, x="Volatility", y="Return", color="Index", hover_name="Year",
                 color_discrete_map=COLORS,
@@ -181,11 +181,17 @@ sc.update_xaxes(tickformat=".0%")
 sc.update_yaxes(tickformat=".0%")
 c5.plotly_chart(sc, width="stretch")
 
+c6.subheader("Summary Metrics")
+c6.dataframe(m.style.format({"Total return": "{:.1%}", "Ann. return": "{:.1%}",
+                             "Ann. volatility": "{:.1%}", "Return/Vol": "{:.2f}",
+                             "Max drawdown": "{:.1%}"}), hide_index=True)
+
+# ---- row 4: waterfall (full width so labels have room)
 names = [NAMES[x] for x in sel]
 ncols = 2
 nrows = -(-len(names) // ncols)
 wf = make_subplots(rows=nrows, cols=ncols, subplot_titles=names,
-                   vertical_spacing=0.2, horizontal_spacing=0.08)
+                   vertical_spacing=0.22, horizontal_spacing=0.06)
 
 for i, nm in enumerate(names):
     r_, c_ = i // ncols + 1, i % ncols + 1
@@ -228,11 +234,11 @@ for i, nm in enumerate(names):
     wf.update_yaxes(range=[lo - 0.08 * span, hi + 0.22 * span], row=r_, col=c_)
 
 wf.update_layout(title="Hypothetical gain per year on $100 invested at window start",
-                 showlegend=False, height=300 * nrows + 80)
-wf.update_xaxes(type="category", tickangle=-60)
+                 showlegend=False, height=380 * nrows + 100)
+wf.update_xaxes(type="category", tickangle=-45)
 wf.update_yaxes(tickprefix="$")                        # the only place a $ appears on the bars
-c6.plotly_chart(wf, width="stretch")
-c6.caption("Each bar is the change in the value of a hypothetical $100 invested at the start "
+st.plotly_chart(wf, width="stretch")
+st.caption("Each bar is the change in the value of a hypothetical $100 invested at the start "
            "of the selected window. The grey bar is the total gain. Price-only: no dividends, "
            "taxes, or fees.")
 
@@ -249,11 +255,6 @@ with st.expander("All years, all indices"):
                      "Ratio rank", "Vol rank"]]
                  .style.format({"Return": "{:.1%}", "Volatility": "{:.1%}",
                                 "Return/Vol": "{:.2f}"}), hide_index=True)
-
-st.subheader("Summary Metrics")
-st.dataframe(m.style.format({"Total return": "{:.1%}", "Ann. return": "{:.1%}",
-                             "Ann. volatility": "{:.1%}", "Return/Vol": "{:.2f}",
-                             "Max drawdown": "{:.1%}"}), hide_index=True)
 
 st.caption("Source: FRED (St. Louis Fed). Index data belongs to its publishers "
            "(S&P Dow Jones Indices, Nasdaq). Price-only, no dividends.")
